@@ -1,11 +1,12 @@
 import React, { Component } from 'react';
 import Web3 from 'web3';
-import Identicon from 'identicon.js';
+
+import './App.css';
 
 import SocialNetwork from '../abis/SocialNetwork.json';
 import Navbar from './Navbar';
+import Main from './Main';
 
-import './App.css';
 
 class App extends Component {
   constructor(props) {
@@ -15,9 +16,14 @@ class App extends Component {
       account: '',
       socialNetwork: null,
       postCount: 0,
-      posts: []
+      posts: [],
+      loading: true
     };
+
+    this.createPost = this.createPost.bind(this);
+    this.tipPost = this.tipPost.bind(this);
   }
+
   async componentWillMount() {
     await this.loadWeb3();
     await this.loadBlockchainData()
@@ -25,6 +31,7 @@ class App extends Component {
 
   async loadWeb3() {
     if (window.ethereum) {
+      console.log('This is ethereum web3')
       window.web3 = new Web3(window.ethereum)
       await window.ethereum.enable()
     }
@@ -54,14 +61,39 @@ class App extends Component {
 
       // Load posts
       for(let i = 1; i <= postCount; i++) {
-        const post = await socialNetwork.methods.posts[i].call()
+        const post = await socialNetwork.methods.posts(i).call()
         this.setState({
           posts: [...this.state.posts, post]
         })
       }
+      
+      // Sort posts to show highest tipped post first
+      this.setState({
+        posts: this.state.posts.sort((a, b) => b.tipAmount - a.tipAmount)
+      })
+
+      this.setState({ loading: false })
     } else {
       window.alert('SocialNetwork contract not deployed to detected network.')
     }
+  }
+
+  createPost(content) {
+    // this.setState({ loading: true });
+    this.state.socialNetwork.methods.createPost(content).send({ from: this.state.account })
+    .on('receipt', receipt => {
+      console.log(receipt)
+      this.setState({ loading: false });
+    });
+  }
+
+  tipPost(id, tipAmount) {
+    // this.setState({ loading: true })
+    this.state.socialNetwork.methods.tipPost(id).send({ from: this.state.account, value: tipAmount })
+    .on('receipt', receipt => {
+      console.log(receipt)
+      this.setState({ loading: false });
+    });
   }
 
   render() {
@@ -69,43 +101,14 @@ class App extends Component {
       <div>
         <Navbar account={this.state.account} />
         
-        <div className="container-fluid mt-5">
-          <div className="row">
-            <main role="main" className="col-lg-12 mr-auto ml-auto" style={{ maxWidth: '500px'}}>
-              <div className="content mr-auto ml-auto">
-                { this.state.posts.map((post, key) => {
-                  return (
-                    <div className="card mb-4" style="width: 18rem;" key={key}>
-                      <div className="card-header">
-                        <img
-                          className="ml-2"
-                          width="30"
-                          height="30"
-                          src={`data:image/png;base64,${new Identicon(post.author, 30).toString()}`}
-                        />
-                        <small className="text-mute">{post.author}</small>
-                      </div>
-                      <ul className="list-group list-group-flush">
-                        <li className="list-group-item">
-                          <p>{post.content}</p>
-                        </li>
-                        <li className="list-group-item py-2">
-                          <small className="float-left mt-1 text-muted">
-                            TIPS: {window.web3.utils.fromWei(post.tipAmount.toString(), 'Ether')} ETH
-                          </small>
-                          <button className="btn btn-link btn-sm float-right pt-0">
-                            TIP 0.1 ETH
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  )
-                })}
-              </div>
-            </main>
-          </div>
-        </div>
-
+        { this.state.loading
+          ? <div id="loader" className="text-center mt-5"><p>Loading...</p></div>
+          : <Main 
+              posts={this.state.posts}
+              createPost={this.createPost}
+              tipPost={this.tipPost}
+            />
+        }
       </div>
     );
   }
